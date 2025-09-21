@@ -297,14 +297,14 @@ namespace Board {
         const int to   = Helpers::get_to(move);
 
         const Piece piece = game.boardGhost[from];
-        const int color   = Helpers::get_color(piece);
+        const int color   = piece >> 3; // faster than helper call
 
-        const bool isEp        = Helpers::is_enpassant(move);
+        const bool ep = Helpers::is_enpassant(move);
         const int epCaptureSq = (color == WHITE) ? to - 8 : to + 8;
-        const Piece captured    = game.boardGhost[isEp ? epCaptureSq : to];
+        const Piece captured = game.boardGhost[ep ? epCaptureSq : to];
 
         // Save state
-        Rune::State *s = &game.history[game.historyCount++];
+        Rune::State* s = &game.history[game.historyCount++];
 
         s->castlingRights   = game.castlingRights;
         s->enpassantSquare  = game.enpassantSquare;
@@ -315,145 +315,99 @@ namespace Board {
 
         if (callType == MAKE_MOVE_FULL) s->zobristKey = game.zobristKey;
 
-        memcpy(s->attackMap, game.attackWorker.attackMap, sizeof(game.attackWorker.attackMap));
-        memcpy(s->attackMapFull, game.attackWorker.attackMapFull, sizeof(game.attackWorker.attackMapFull));
-
         // Zobrist update
-        if (callType == MAKE_MOVE_FULL) Zobrist::updateMove(game, move, *s);
+        if (callType == MAKE_MOVE_FULL)
+            Zobrist::updateMove(game, move, *s);
 
         // Apply move
         setSquare(game, from, EMPTY);
-
-        if (Helpers::is_promo(move)) {
+        if (Helpers::is_promo(move))
             setSquare(game, to, Helpers::make_piece(Helpers::get_promo(move), color));
-        } else {
+        else
             setSquare(game, to, piece);
-        }
 
-        if (isEp) setSquare(game, epCaptureSq, EMPTY);
+        if (ep) setSquare(game, epCaptureSq, EMPTY);
 
-        // Castling — keep branch logic to preserve correctness
+        // Castling via lookup table
         if (Helpers::is_castle(move)) {
-            int rookFrom = 0, rookTo = 0;
-
-            if (from == 4 && to == 6) {         // White kingside
-                rookFrom = 7;  rookTo = 5;
-            } else if (from == 60 && to == 62) { // Black kingside
-                rookFrom = 63; rookTo = 61;
-            } else if (from == 4 && to == 2) {   // White queenside
-                rookFrom = 0;  rookTo = 3;
-            } else if (from == 60 && to == 58) { // Black queenside
-                rookFrom = 56; rookTo = 59;
-            }
-
-            Piece rook = game.boardGhost[rookFrom];
-            setSquare(game, rookFrom, EMPTY);
-            setSquare(game, rookTo, rook);
-
+            auto cd = game.attackWorker.preComputed.castlingRookMoves[from][to];
+            Piece rook = game.boardGhost[cd.rookFrom];
+            setSquare(game, cd.rookFrom, EMPTY);
+            setSquare(game, cd.rookTo, rook);
             game.hasCastled[color] = true;
         }
 
-        // Update castling rights
+        // Update castling rights and en passant
         game.castlingRights &= game.attackWorker.preComputed.castling[from][to];
-
-        // Update en passant square
-        game.enpassantSquare = Helpers::is_double_push(move) ? (color == WHITE ? to - 8 : to + 8) : -1;
+        game.enpassantSquare = (Helpers::is_double_push(move) ? (color == WHITE ? to - 8 : to + 8) : -1);
 
         // Incremental attack update
         game.attackWorker.update(game, move);
 
         // Switch turn
         game.turn ^= 1;
-
-        // Increase ply
         game.ply++;
 
-        // Push repetition key
+        // Repetition handling
         if (callType == MAKE_MOVE_FULL)
-        {
-            Zobrist::updateBoard(game);
-         
             game.repetitionTable.push(game.zobristKey);
-        }
 
-        if (Helpers::get_type(piece) == PAWN) game.repetitionTable.fiftyMoveCounter = 0;
-
-        else game.repetitionTable.fiftyMoveCounter++;
+        // Fifty-move rule
+        if ((piece & 7) == PAWN || captured != EMPTY)
+            game.repetitionTable.fiftyMoveCounter = 0;
+        else
+            game.repetitionTable.fiftyMoveCounter++;
     }
 
     void unmakeMove(Rune::Game& game, int callType)
     {
-        if (game.historyCount <= 0)
-        {
-            fprintf(stderr, "Error: unmake_move with empty history!\n");
-
-            exit(EXIT_FAILURE);
-        }
-
-        Rune::State *s = &game.history[--game.historyCount];
-
+        Rune::State* s = &game.history[--game.historyCount];
         Move move = s->move;
 
         const int from = Helpers::get_from(move);
-        const int to = Helpers::get_to(move);
+        const int to   = Helpers::get_to(move);
+        Piece piece    = game.boardGhost[to];
+        int color      = piece >> 3;
 
-        Piece piece = game.boardGhost[to];
-
-        int color = Helpers::get_color(piece);
-
-        // Undo turn flip first (since make_move flips at the end)
+        // Undo turn flip first
         game.turn = s->turn;
 
-        // Move piece back from `to` to `from`
+        // Move back
         setSquare(game, to, EMPTY);
-
-        if (Helpers::is_promo(move)) {
-            // On unmake, remove promoted piece at `to`, restore pawn at `from`
+        if (Helpers::is_promo(move))
             setSquare(game, from, Helpers::make_piece(PAWN, color));
-        } else {
+        else
             setSquare(game, from, piece);
-        }
 
         // Restore captured piece
         if (Helpers::is_enpassant(move)) {
-            // Restore the captured pawn behind the `to` square
             const int epCaptureSq = (color == WHITE) ? to - 8 : to + 8;
-
             setSquare(game, epCaptureSq, s->capturedPiece);
         } else if (s->capturedPiece != EMPTY) {
             setSquare(game, to, s->capturedPiece);
         }
 
-        // Undo castling rook move if castling
-        if (Helpers::is_castle(move))
-        {
-            int rookFrom, rookTo;
-            if (to == from + 2) {  // Kingside castle
-                rookFrom = from + 3;
-                rookTo = from + 1;
-            } else {               // Queenside castle
-                rookFrom = from - 4;
-                rookTo = from - 1;
-            }
-            Piece rook = game.boardGhost[rookTo];
-
-            setSquare(game, rookTo, EMPTY);
-            setSquare(game, rookFrom, rook);
-
+        // Undo castling via lookup table
+        if (Helpers::is_castle(move)) {
+            auto cd = game.attackWorker.preComputed.castlingRookMoves[from][to];
+            Piece rook = game.boardGhost[cd.rookTo];
+            setSquare(game, cd.rookTo, EMPTY);
+            setSquare(game, cd.rookFrom, rook);
             game.hasCastled[color] = false;
         }
 
-        // Restore castling rights, en passant, zobrist key, and attack tables
-        game.castlingRights = s->castlingRights;
+        // Restore castling rights, en passant, zobrist
+        game.castlingRights  = s->castlingRights;
         game.enpassantSquare = s->enpassantSquare;
+        if (callType == MAKE_MOVE_FULL)
+            game.zobristKey = s->zobristKey;
 
-        if (callType == MAKE_MOVE_FULL) game.zobristKey = s->zobristKey;
+        // Restore incremental attack map
+        game.attackWorker.restore(game, *s);
 
-        memcpy(game.attackWorker.attackMap, s->attackMap, sizeof(game.attackWorker.attackMap));
-        memcpy(game.attackWorker.attackMapFull, s->attackMapFull, sizeof(game.attackWorker.attackMapFull));
-
-        if (callType == MAKE_MOVE_FULL) game.repetitionTable.pop();
-
+        // Repetition handling
+        if (callType == MAKE_MOVE_FULL)
+            game.repetitionTable.pop();
         game.repetitionTable.fiftyMoveCounter = s->fiftyMoveCounter;
 
         game.ply--;

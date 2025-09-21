@@ -5,6 +5,7 @@
 #include <tables/helpers.hpp>
 
 namespace Rune {
+    class State;
     class Game; // forward declaration
 }
 
@@ -25,6 +26,7 @@ namespace Attack {
 
         void generateAll(Rune::Game& game);
         void update(Rune::Game& game, Move move);
+        void restore(Rune::Game& game, const Rune::State& s);
 
         bool isSquareAttackedBy(int square, int color);
         

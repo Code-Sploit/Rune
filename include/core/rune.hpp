@@ -19,7 +19,12 @@
 #include <core/search.hpp>
 
 namespace Rune {
+    struct AttackDiff {
+        int color;
+        int square;
 
+        Bitboard oldAttacks;
+    };
     // --- Snapshot of game state for history / undo ---
     class State {
     public:
@@ -35,9 +40,14 @@ namespace Rune {
         Piece capturedPiece;
         Move move;
 
-        // Attack maps
-        Bitboard attackMapFull[2];
-        Bitboard attackMap[2][64];
+        static constexpr int MAX_ATTACK_DIFFS = 64;
+
+        int attackDiffCount = 0;
+
+        // Incremental attack updator
+        AttackDiff attackDiffs[MAX_ATTACK_DIFFS];
+
+        Bitboard oldAttackMapFull[2];
 
         // Misc
         ZobristHash zobristKey;

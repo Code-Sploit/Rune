@@ -201,115 +201,132 @@ namespace Attack {
         }
     }
 
-    void Worker::update(Rune::Game& game, Move move)
+void Worker::update(Rune::Game& game, Move move)
+{
+    Rune::State *state = &game.history[game.historyCount - 1];
+    state->attackDiffCount = 0;
+
+    auto logAttackChange = [&](int color, int square, Bitboard newVal)
     {
-        const int from = Helpers::get_from(move);
-        const int to   = Helpers::get_to(move);
-        const Bitboard occ = game.occupancy[BOTH];
-
-        const Piece movedPiece = game.boardGhost[to];
-        const PieceColor color = Helpers::get_color(movedPiece);
-        const PieceColor opponent = PieceColor(color ^ 1);
-
-        // Determine the moved piece type (handle promotion)
-        PieceType movedType = Helpers::get_type(movedPiece);
-        if (Helpers::is_promo(move)) {
-            movedType = Helpers::get_promo(move);
+        if (this->attackMap[color][square] != newVal)
+        {
+            state->attackDiffs[state->attackDiffCount++] = { color, square, this->attackMap[color][square] };
+            this->attackMap[color][square] = newVal;
         }
+    };
 
-        // --- Clear old attacks for moving piece ---
-        this->attackMap[color][from] = 0ULL;
+    const int from = Helpers::get_from(move);
+    const int to   = Helpers::get_to(move);
+    const Bitboard occ = game.occupancy[BOTH];
 
-        // --- Clear opponent's attacks from 'to' square ---
-        this->attackMap[opponent][to] = 0ULL;
+    const Piece movedPiece = game.boardGhost[to];
+    const PieceColor color = Helpers::get_color(movedPiece);
+    const PieceColor opponent = PieceColor(color ^ 1);
 
-        // --- Handle en passant ---
-        int captureSq = to;
-        if (Helpers::is_enpassant(move)) {
-            captureSq = (color == WHITE) ? (to - 8) : (to + 8);
-        }
+    PieceType movedType = Helpers::is_promo(move) ? Helpers::get_promo(move) : Helpers::get_type(movedPiece);
 
-        // --- Clear attacks of captured piece ---
-        Piece capturedPiece = game.boardGhost[captureSq];
-        if (Helpers::get_type(capturedPiece) != EMPTY) {
-            PieceColor capColor = Helpers::get_color(capturedPiece);
-            this->attackMap[capColor][captureSq] = 0ULL;
-        } else if (Helpers::is_enpassant(move)) {
-            this->attackMap[opponent][captureSq] = 0ULL;
-        }
+    // --- Clear old attacks ---
+    logAttackChange(color, from, 0ULL);
+    logAttackChange(opponent, to, 0ULL);
 
-        // --- Add new attacks for moved piece ---
-        Bitboard newAtt = 0ULL;
-        switch (movedType) {
-            case BISHOP: newAtt = Magic::getBishopAttacks(to, occ); break;
-            case ROOK:   newAtt = Magic::getRookAttacks(to, occ); break;
-            case QUEEN:  newAtt = Magic::getBishopAttacks(to, occ) | Magic::getRookAttacks(to, occ); break;
-            case PAWN:   newAtt = this->preComputed.pawns[color][to]; break;
-            case KNIGHT: newAtt = this->preComputed.pieces[KNIGHT][to]; break;
-            case KING:   newAtt = this->preComputed.pieces[KING][to]; break;
-            default: break;
-        }
-        this->attackMap[color][to] = newAtt;
+    // --- Handle en passant ---
+    int captureSq = to;
+    if (Helpers::is_enpassant(move)) captureSq = (color == WHITE ? to - 8 : to + 8);
 
-        // --- Update sliders affected by from/to moves ---
-        Bitboard sliderOccupancy =
-            game.board[WHITE][BISHOP] | game.board[WHITE][ROOK] | game.board[WHITE][QUEEN] |
-            game.board[BLACK][BISHOP] | game.board[BLACK][ROOK] | game.board[BLACK][QUEEN];
+    Piece capturedPiece = game.boardGhost[captureSq];
+    if (Helpers::get_type(capturedPiece) != EMPTY) logAttackChange(Helpers::get_color(capturedPiece), captureSq, 0ULL);
+    else if (Helpers::is_enpassant(move)) logAttackChange(opponent, captureSq, 0ULL);
 
-        Bitboard affected =
-            sliderOccupancy & (
-                Magic::getBishopAttacks(from, occ) | Magic::getBishopAttacks(to, occ) |
-                Magic::getRookAttacks(from, occ)   | Magic::getRookAttacks(to, occ)
-            );
-
-        while (affected) {
-            int sq = __builtin_ctzll(affected);
-            affected &= affected - 1;
-
-            Piece p = game.boardGhost[sq];
-            PieceColor c = Helpers::get_color(p);
-            PieceType pt = Helpers::get_type(p);
-
-            if (pt == BISHOP)       newAtt = Magic::getBishopAttacks(sq, occ);
-            else if (pt == ROOK)    newAtt = Magic::getRookAttacks(sq, occ);
-            else if (pt == QUEEN)   newAtt = Magic::getBishopAttacks(sq, occ) | Magic::getRookAttacks(sq, occ);
-            else continue;
-
-            this->attackMap[c][sq] = newAtt;
-        }
-
-        // --- Update pawns, knights, king for moving color ---
-        Bitboard pcs;
-
-        pcs = game.board[color][PAWN];
-        while (pcs) {
-            int sq = __builtin_ctzll(pcs);
-            pcs &= pcs - 1;
-            this->attackMap[color][sq] = this->preComputed.pawns[color][sq];
-        }
-
-        pcs = game.board[color][KNIGHT];
-        while (pcs) {
-            int sq = __builtin_ctzll(pcs);
-            pcs &= pcs - 1;
-            this->attackMap[color][sq] = this->preComputed.pieces[KNIGHT][sq];
-        }
-
-        pcs = game.board[color][KING];
-        if (pcs) {
-            int sq = __builtin_ctzll(pcs);
-            this->attackMap[color][sq] = this->preComputed.pieces[KING][sq];
-        }
-
-        // --- Recompute full attack map for both colors ---
-        for (int c = 0; c < 2; c++) {
-            Bitboard unionAtt = 0ULL;
-            for (int s = 0; s < 64; s++) {
-                unionAtt |= this->attackMap[c][s];
-            }
-            this->attackMapFull[c] = unionAtt;
-        }
+    // --- Add new attacks for moved piece ---
+    Bitboard newAtt = 0ULL;
+    switch (movedType)
+    {
+        case BISHOP: newAtt = Magic::getBishopAttacks(to, occ); break;
+        case ROOK:   newAtt = Magic::getRookAttacks(to, occ); break;
+        case QUEEN:  newAtt = Magic::getBishopAttacks(to, occ) | Magic::getRookAttacks(to, occ); break;
+        case PAWN:   newAtt = this->preComputed.pawns[color][to]; break;
+        case KNIGHT: newAtt = this->preComputed.pieces[KNIGHT][to]; break;
+        case KING:   newAtt = this->preComputed.pieces[KING][to]; break;
+        default: break;
     }
+    logAttackChange(color, to, newAtt);
+
+    // --- Sliders affected ---
+    Bitboard sliderOcc =
+        game.board[WHITE][BISHOP] | game.board[WHITE][ROOK] | game.board[WHITE][QUEEN] |
+        game.board[BLACK][BISHOP] | game.board[BLACK][ROOK] | game.board[BLACK][QUEEN];
+
+    Bitboard affected =
+        sliderOcc & (
+            Magic::getBishopAttacks(from, occ) | Magic::getBishopAttacks(to, occ) |
+            Magic::getRookAttacks(from, occ)   | Magic::getRookAttacks(to, occ)
+        );
+
+    while (affected)
+    {
+        int sq = __builtin_ctzll(affected);
+        affected &= affected - 1;
+
+        Piece p = game.boardGhost[sq];
+        PieceColor c = Helpers::get_color(p);
+        PieceType pt = Helpers::get_type(p);
+
+        if (pt == BISHOP)       newAtt = Magic::getBishopAttacks(sq, occ);
+        else if (pt == ROOK)    newAtt = Magic::getRookAttacks(sq, occ);
+        else if (pt == QUEEN)   newAtt = Magic::getBishopAttacks(sq, occ) | Magic::getRookAttacks(sq, occ);
+        else continue;
+
+        logAttackChange(c, sq, newAtt);
+    }
+
+    // --- Pawns, knights, king ---
+    auto updatePieces = [&](PieceType pt, const Bitboard &bb, Bitboard precomputed[])
+    {
+        Bitboard pcs = bb;
+        while (pcs)
+        {
+            int sq = __builtin_ctzll(pcs);
+            pcs &= pcs - 1;
+            logAttackChange(color, sq, precomputed[sq]);
+        }
+    };
+
+    updatePieces(PAWN, game.board[color][PAWN], this->preComputed.pawns[color]);
+    updatePieces(KNIGHT, game.board[color][KNIGHT], this->preComputed.pieces[KNIGHT]);
+    updatePieces(KING, game.board[color][KING], this->preComputed.pieces[KING]);
+
+    // --- Save full attack maps ---
+    state->oldAttackMapFull[WHITE] = this->attackMapFull[WHITE];
+    state->oldAttackMapFull[BLACK] = this->attackMapFull[BLACK];
+
+    // --- Recompute union ---
+    for (int c = 0; c < 2; c++)
+    {
+        Bitboard unionAtt = 0ULL;
+        Bitboard occupancy = game.occupancy[c];
+
+        while (occupancy)
+        {
+            int s = Helpers::pop_lsb(occupancy);
+
+            unionAtt |= this->attackMap[c][s];
+        }
+
+        this->attackMapFull[c] = unionAtt;
+    }
+}
+
+void Worker::restore(Rune::Game& game, const Rune::State& state)
+{
+    for (int i = state.attackDiffCount - 1; i >= 0; --i)
+    {
+        const Rune::AttackDiff &diff = state.attackDiffs[i];
+        this->attackMap[diff.color][diff.square] = diff.oldAttacks;
+    }
+
+    this->attackMapFull[WHITE] = state.oldAttackMapFull[WHITE];
+    this->attackMapFull[BLACK] = state.oldAttackMapFull[BLACK];
+}
 
     bool Worker::isSquareAttackedBy(int square, int color)
     {

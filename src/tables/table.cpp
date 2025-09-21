@@ -121,10 +121,12 @@ namespace PrecomputedTables {
     // ----------------------------
     // Castling rights lookup
     // ----------------------------
-    void AttackTable::preComputeCastling() {
+    void AttackTable::preComputeCastling()
+    {
         for (int from = 0; from < 64; ++from) {
             for (int to = 0; to < 64; ++to) {
                 uint8_t rights = CASTLING_ALL;
+                CastleData rookMove = { -1, -1 }; // default: invalid
 
                 if (from == 4) rights &= ~(WHITE_KINGSIDE | WHITE_QUEENSIDE);
                 if (from == 60) rights &= ~(BLACK_KINGSIDE | BLACK_QUEENSIDE);
@@ -139,7 +141,14 @@ namespace PrecomputedTables {
                 if (to == 56) rights &= ~BLACK_QUEENSIDE;
                 if (to == 63) rights &= ~BLACK_KINGSIDE;
 
+                // Precompute rook moves for castling
+                if (from == 4 && to == 6)       rookMove = { 7, 5 };   // White kingside
+                else if (from == 4 && to == 2)  rookMove = { 0, 3 };   // White queenside
+                else if (from == 60 && to == 62) rookMove = { 63, 61 }; // Black kingside
+                else if (from == 60 && to == 58) rookMove = { 56, 59 }; // Black queenside
+
                 this->castling[from][to] = rights;
+                this->castlingRookMoves[from][to] = rookMove;
             }
         }
     }

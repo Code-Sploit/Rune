@@ -167,8 +167,8 @@ namespace Attack {
             iter &= iter - 1;
 
             Piece piece = game.boardGhost[square];
-            PieceColor color = Helpers::get_color(piece);
-            PieceType type = Helpers::get_type(piece);
+            PieceColor color = Helpers::getColor(piece);
+            PieceType type = Helpers::getType(piece);
 
             Bitboard attacks = 0ULL;
 
@@ -215,15 +215,15 @@ void Worker::update(Rune::Game& game, Move move)
         }
     };
 
-    const int from = Helpers::get_from(move);
-    const int to   = Helpers::get_to(move);
+    const int from = Helpers::getFrom(move);
+    const int to   = Helpers::getTo(move);
     const Bitboard occ = game.occupancy[BOTH];
 
     const Piece movedPiece = game.boardGhost[to];
-    const PieceColor color = Helpers::get_color(movedPiece);
+    const PieceColor color = Helpers::getColor(movedPiece);
     const PieceColor opponent = PieceColor(color ^ 1);
 
-    PieceType movedType = Helpers::is_promo(move) ? Helpers::get_promo(move) : Helpers::get_type(movedPiece);
+    PieceType movedType = Helpers::isPromo(move) ? Helpers::getPromo(move) : Helpers::getType(movedPiece);
 
     // --- Clear old attacks ---
     logAttackChange(color, from, 0ULL);
@@ -231,11 +231,11 @@ void Worker::update(Rune::Game& game, Move move)
 
     // --- Handle en passant ---
     int captureSq = to;
-    if (Helpers::is_enpassant(move)) captureSq = (color == WHITE ? to - 8 : to + 8);
+    if (Helpers::isEnpassant(move)) captureSq = (color == WHITE ? to - 8 : to + 8);
 
     Piece capturedPiece = game.boardGhost[captureSq];
-    if (Helpers::get_type(capturedPiece) != EMPTY) logAttackChange(Helpers::get_color(capturedPiece), captureSq, 0ULL);
-    else if (Helpers::is_enpassant(move)) logAttackChange(opponent, captureSq, 0ULL);
+    if (Helpers::getType(capturedPiece) != EMPTY) logAttackChange(Helpers::getColor(capturedPiece), captureSq, 0ULL);
+    else if (Helpers::isEnpassant(move)) logAttackChange(opponent, captureSq, 0ULL);
 
     // --- Add new attacks for moved piece ---
     Bitboard newAtt = 0ULL;
@@ -268,8 +268,8 @@ void Worker::update(Rune::Game& game, Move move)
         affected &= affected - 1;
 
         Piece p = game.boardGhost[sq];
-        PieceColor c = Helpers::get_color(p);
-        PieceType pt = Helpers::get_type(p);
+        PieceColor c = Helpers::getColor(p);
+        PieceType pt = Helpers::getType(p);
 
         if (pt == BISHOP)       newAtt = Magic::getBishopAttacks(sq, occ);
         else if (pt == ROOK)    newAtt = Magic::getRookAttacks(sq, occ);
@@ -307,7 +307,7 @@ void Worker::update(Rune::Game& game, Move move)
 
         while (occupancy)
         {
-            int s = Helpers::pop_lsb(occupancy);
+            int s = Helpers::popLsb(occupancy);
 
             unionAtt |= this->attackMap[c][s];
         }
@@ -335,13 +335,13 @@ void Worker::restore(Rune::Game& game, const Rune::State& state)
 
     Bitboard Worker::getNewAttacksForMove(Rune::Game& game, Move move)
     {
-        int from = Helpers::get_from(move);
-        int to   = Helpers::get_to(move);
+        int from = Helpers::getFrom(move);
+        int to   = Helpers::getTo(move);
 
         Piece fPiece = game.boardGhost[from];
 
-        int type  = Helpers::get_type(fPiece);
-        int color = Helpers::get_color(fPiece);
+        int type  = Helpers::getType(fPiece);
+        int color = Helpers::getColor(fPiece);
 
         switch (type)
         {
@@ -365,7 +365,7 @@ void Worker::restore(Rune::Game& game, const Rune::State& state)
 
         while (occupancy)
         {
-            int sq = Helpers::pop_lsb(occupancy);
+            int sq = Helpers::popLsb(occupancy);
 
             if (attackMap[color][sq] & squareMask)
                 attackers |= (1ULL << sq);
@@ -380,7 +380,7 @@ void Worker::restore(Rune::Game& game, const Rune::State& state)
         Bitboard pieces = game.board[color][type]; // all pieces of this type
 
         while (pieces) {
-            int sq = Helpers::pop_lsb(pieces);
+            int sq = Helpers::popLsb(pieces);
 
             if (attackMap[color][sq] & zone)  // piece attacks zone
                 attackers |= (1ULL << sq);

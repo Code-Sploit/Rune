@@ -1,6 +1,6 @@
 #include <core/rune.hpp>
-#include <core/search.hpp>
 #include <core/eval.hpp>
+#include <search/search.hpp>
 #include <tables/zobrist.hpp>
 #include <cstdlib>
 #include <cstdio>

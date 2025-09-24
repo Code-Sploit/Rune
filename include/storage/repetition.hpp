@@ -1,36 +1,37 @@
 #pragma once
 
+// ==================== Core & Constants ====================
 #include <tables/constants.hpp>
 
 namespace Rune {
-    class Game;
+    class Game; // Forward declaration
 }
 
 namespace Repetition {
+
+    // --------------------------------------------------------
+    // Table: Tracks position repetitions for draw detection
+    // --------------------------------------------------------
     class Table {
-        private:
-            const static size_t REPETITION_SIZE = 16384;
-            ZobristHash stack[REPETITION_SIZE];  // History of position hashes
-            size_t start = 0;                             // Index of first valid hash
-            size_t count = 0;                             // Number of stored hashes
+    private:
+        static constexpr size_t REPETITION_SIZE = 16384;
 
-        public:
-            int fiftyMoveCounter = 0;
-            
-            // Push a new position hash onto the stack
-            void push(ZobristHash hash);
+        ZobristHash stack[REPETITION_SIZE];  // History of position hashes
+        size_t      start = 0;                // Index of first valid hash
+        size_t      count = 0;                // Number of stored hashes
 
-            // Pop the last position hash
-            void pop();
+    public:
+        int fiftyMoveCounter = 0;
 
-            // Clear the repetition table
-            void clear();
+        // --- Stack operations ---
+        void push(ZobristHash hash);    // Push a new position hash
+        void pop();                      // Pop the last position hash
+        void clear();                    // Clear the repetition table
 
-            // Check if the current hash occurred three times
-            bool checkThreefold(ZobristHash hash);
-
-            bool checkThreefoldRecent(size_t recentMoves);
-
-            bool checkFiftyMoveRule();
+        // --- Repetition checks ---
+        bool checkThreefold(ZobristHash hash);       // Has this hash occurred three times?
+        bool checkThreefoldRecent(size_t recentMoves);
+        bool checkFiftyMoveRule();                   // Fifty-move rule detection
     };
+
 } // namespace Repetition

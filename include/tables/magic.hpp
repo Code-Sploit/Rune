@@ -7,25 +7,25 @@
 namespace Magic {
 
     // ----------------------------
-    // Bishop attacks
+    // Bishop Attacks
     // ----------------------------
     inline Bitboard getBishopAttacks(int square, Bitboard occupancy) {
-        Bitboard blockers = occupancy & bishop_masks[square];
-        std::size_t index = static_cast<std::size_t>((blockers * bishop_magics[square]) >> bishop_shifts[square]);
-        return bishop_attack_tables[square][index];
+        Bitboard blockers = occupancy & bishopMasks[square];
+        std::size_t index = static_cast<std::size_t>((blockers * bishopMagics[square]) >> bishopShifts[square]);
+        return bishopAttackTables[square][index];
     }
 
     // ----------------------------
-    // Rook attacks
+    // Rook Attacks
     // ----------------------------
     inline Bitboard getRookAttacks(int square, Bitboard occupancy) {
-        Bitboard blockers = occupancy & rook_masks[square];
-        std::size_t index = static_cast<std::size_t>((blockers * rook_magics[square]) >> rook_shifts[square]);
-        return rook_attack_tables[square][index];
+        Bitboard blockers = occupancy & rookMasks[square];
+        std::size_t index = static_cast<std::size_t>((blockers * rookMagics[square]) >> rookShifts[square]);
+        return rookAttackTables[square][index];
     }
 
     // ----------------------------
-    // Queen attacks = Bishop + Rook
+    // Queen Attacks = Bishop + Rook
     // ----------------------------
     inline Bitboard getQueenAttacks(int square, Bitboard occupancy) {
         return getBishopAttacks(square, occupancy) | getRookAttacks(square, occupancy);

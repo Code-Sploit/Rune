@@ -1,36 +1,31 @@
 #pragma once
 
+// ==================== Tables & Constants ====================
 #include <tables/constants.hpp>
 
 namespace Rune {
-    class Game; // forward declaration
+    class Game; // Forward declaration
 }
 
 namespace Evaluation {
 
+    // --------------------------------------------------------
+    // Worker: Evaluation logic and heuristics
+    // --------------------------------------------------------
     class Worker {
         private:
+            // --- Game phase classification ---
             enum GamePhase {
                 OPENING,
                 MIDDLEGAME,
                 ENDGAME
             };
 
+            // --- Piece-Square tables (per piece, per phase) ---
             struct PieceSquareTable {
                 int openingValue[64];
                 int middlegameValue[64];
                 int endgameValue[64];
-            };
-
-            static constexpr Bitboard FILE_MASKS[8] = {
-                0x0101010101010101ULL,
-                0x0202020202020202ULL,
-                0x0404040404040404ULL,
-                0x0808080808080808ULL,
-                0x1010101010101010ULL,
-                0x2020202020202020ULL,
-                0x4040404040404040ULL,
-                0x8080808080808080ULL
             };
 
             static constexpr int mirror[64] = {
@@ -43,7 +38,7 @@ namespace Evaluation {
                 8, 9,10,11,12,13,14,15,
                 0, 1, 2, 3, 4, 5, 6, 7
             };
-
+            
             static constexpr PieceSquareTable pieceSquareTables[6] = {
                 {
                     {
@@ -239,23 +234,25 @@ namespace Evaluation {
                 }
             };
 
-            static constexpr int EVAL_HAS_BISHOP_PAIR = 40;
-            static constexpr int EVAL_HAS_ROOK_PAIR   = 30;
+            // --- Evaluation constants ---
+            static constexpr int EVAL_HAS_BISHOP_PAIR  = 40;
+            static constexpr int EVAL_HAS_ROOK_PAIR    = 30;
 
             static constexpr int EVAL_PAWN_MOBILITY_SCORE = 5;
 
-            static constexpr int EVAL_KING_SAFETY_MISSING_PAWN = 40;
-            static constexpr int EVAL_KING_SAFETY_FULL_SHIELD = 50;
-            static constexpr int EVAL_KING_SAFETY_OPEN_FILE = 60;
+            // King safety
+            static constexpr int EVAL_KING_SAFETY_MISSING_PAWN   = 40;
+            static constexpr int EVAL_KING_SAFETY_FULL_SHIELD    = 50;
+            static constexpr int EVAL_KING_SAFETY_OPEN_FILE      = 60;
             static constexpr int EVAL_KING_SAFETY_SEMI_OPEN_FILE = 30;
-            static constexpr int EVAL_KING_SAFETY_CENTRAL_KING = 40;
+            static constexpr int EVAL_KING_SAFETY_CENTRAL_KING   = 40;
 
-            static constexpr int kingSafetyPieceDanger[6] = {0, 5, 10, 10, 15, 25}; // P, N, B, R, Q
+            static constexpr int kingSafetyPieceDanger[6]     = {0, 5, 10, 10, 15, 25}; // P, N, B, R, Q
             static constexpr int evalStackedPawnPenalties[5] = {0, 40, 60, 90, 140};
 
-            int getPSTFor(PieceType type, int square, GamePhase phase);
-            int getMobilityScoreFor(Rune::Game& game, PieceType type, int square);
-
+            // --- Helpers ---
+            int      getPSTFor(PieceType type, int square, GamePhase phase);
+            int      getMobilityScoreFor(Rune::Game& game, PieceType type, int square);
             GamePhase getGamePhase(Rune::Game& game);
 
             Bitboard getPassedPawnMask(int square, int color);
@@ -263,11 +260,13 @@ namespace Evaluation {
             Bitboard getKingZone(Rune::Game& game, int kingSquare);
 
         public:
+            // --- State ---
             int eval = 0; // Last evaluation score
 
+            // --- Piece values ---
             static constexpr int pieceValues[6] = {0, 100, 320, 335, 500, 900};
 
-            // Evaluation modules
+            // --- Evaluation modules ---
             void moduleMaterial(Rune::Game& game);
             void modulePST(Rune::Game& game);
             void moduleMobility(Rune::Game& game);
@@ -275,7 +274,7 @@ namespace Evaluation {
             void modulePawnStructure(Rune::Game& game);
             void moduleKingSafety(Rune::Game& game);
 
-            // Evaluate the current position
+            // --- Main evaluation ---
             int evaluate(Rune::Game& game);
     };
 

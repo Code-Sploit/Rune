@@ -29,7 +29,7 @@ namespace Board {
                 int square = rank * 8 + file;
                 Piece piece = game.boardGhost[square];
 
-                if (Helpers::get_type(piece) == EMPTY) {
+                if (Helpers::getType(piece) == EMPTY) {
                     empty_count++;
                 } else {
                     if (empty_count > 0) {
@@ -38,13 +38,13 @@ namespace Board {
                     }
 
                     char piece_char;
-                    switch (Helpers::get_type(piece)) {
-                        case PAWN:   piece_char = (Helpers::get_color(piece) == WHITE) ? 'P' : 'p'; break;
-                        case KNIGHT: piece_char = (Helpers::get_color(piece) == WHITE) ? 'N' : 'n'; break;
-                        case BISHOP: piece_char = (Helpers::get_color(piece) == WHITE) ? 'B' : 'b'; break;
-                        case ROOK:   piece_char = (Helpers::get_color(piece) == WHITE) ? 'R' : 'r'; break;
-                        case QUEEN:  piece_char = (Helpers::get_color(piece) == WHITE) ? 'Q' : 'q'; break;
-                        case KING:   piece_char = (Helpers::get_color(piece) == WHITE) ? 'K' : 'k'; break;
+                    switch (Helpers::getType(piece)) {
+                        case PAWN:   piece_char = (Helpers::getColor(piece) == WHITE) ? 'P' : 'p'; break;
+                        case KNIGHT: piece_char = (Helpers::getColor(piece) == WHITE) ? 'N' : 'n'; break;
+                        case BISHOP: piece_char = (Helpers::getColor(piece) == WHITE) ? 'B' : 'b'; break;
+                        case ROOK:   piece_char = (Helpers::getColor(piece) == WHITE) ? 'R' : 'r'; break;
+                        case QUEEN:  piece_char = (Helpers::getColor(piece) == WHITE) ? 'Q' : 'q'; break;
+                        case KING:   piece_char = (Helpers::getColor(piece) == WHITE) ? 'K' : 'k'; break;
                         default:     piece_char = ' '; break;
                     }
                     fen_string += piece_char;
@@ -93,7 +93,7 @@ namespace Board {
                 int empty = c - '0';
                 for (int i = 0; i < empty; i++)
                 {
-                    setSquare(game, square, Helpers::make_piece(EMPTY, EMPTY));
+                    setSquare(game, square, Helpers::makePiece(EMPTY, EMPTY));
                     square++;
                 }
             }
@@ -117,7 +117,7 @@ namespace Board {
                     default:  type = EMPTY;  break;
                 }
 
-                setSquare(game, square, Helpers::make_piece(type, color));
+                setSquare(game, square, Helpers::makePiece(type, color));
                 square++;
             }
 
@@ -293,13 +293,13 @@ namespace Board {
 
     void makeMove(Rune::Game& game, Move move, int callType)
     {
-        const int from = Helpers::get_from(move);
-        const int to   = Helpers::get_to(move);
+        const int from = Helpers::getFrom(move);
+        const int to   = Helpers::getTo(move);
 
         const Piece piece = game.boardGhost[from];
         const int color   = piece >> 3; // faster than helper call
 
-        const bool ep = Helpers::is_enpassant(move);
+        const bool ep = Helpers::isEnpassant(move);
         const int epCaptureSq = (color == WHITE) ? to - 8 : to + 8;
         const Piece captured = game.boardGhost[ep ? epCaptureSq : to];
 
@@ -321,15 +321,15 @@ namespace Board {
 
         // Apply move
         setSquare(game, from, EMPTY);
-        if (Helpers::is_promo(move))
-            setSquare(game, to, Helpers::make_piece(Helpers::get_promo(move), color));
+        if (Helpers::isPromo(move))
+            setSquare(game, to, Helpers::makePiece(Helpers::getPromo(move), color));
         else
             setSquare(game, to, piece);
 
         if (ep) setSquare(game, epCaptureSq, EMPTY);
 
         // Castling via lookup table
-        if (Helpers::is_castle(move)) {
+        if (Helpers::isCastle(move)) {
             auto cd = game.attackWorker.preComputed.castlingRookMoves[from][to];
             Piece rook = game.boardGhost[cd.rookFrom];
             setSquare(game, cd.rookFrom, EMPTY);
@@ -339,7 +339,7 @@ namespace Board {
 
         // Update castling rights and en passant
         game.castlingRights &= game.attackWorker.preComputed.castling[from][to];
-        game.enpassantSquare = (Helpers::is_double_push(move) ? (color == WHITE ? to - 8 : to + 8) : -1);
+        game.enpassantSquare = (Helpers::isDoublePush(move) ? (color == WHITE ? to - 8 : to + 8) : -1);
 
         // Incremental attack update
         game.attackWorker.update(game, move);
@@ -364,8 +364,8 @@ namespace Board {
         Rune::State* s = &game.history[--game.historyCount];
         Move move = s->move;
 
-        const int from = Helpers::get_from(move);
-        const int to   = Helpers::get_to(move);
+        const int from = Helpers::getFrom(move);
+        const int to   = Helpers::getTo(move);
         Piece piece    = game.boardGhost[to];
         int color      = piece >> 3;
 
@@ -374,13 +374,13 @@ namespace Board {
 
         // Move back
         setSquare(game, to, EMPTY);
-        if (Helpers::is_promo(move))
-            setSquare(game, from, Helpers::make_piece(PAWN, color));
+        if (Helpers::isPromo(move))
+            setSquare(game, from, Helpers::makePiece(PAWN, color));
         else
             setSquare(game, from, piece);
 
         // Restore captured piece
-        if (Helpers::is_enpassant(move)) {
+        if (Helpers::isEnpassant(move)) {
             const int epCaptureSq = (color == WHITE) ? to - 8 : to + 8;
             setSquare(game, epCaptureSq, s->capturedPiece);
         } else if (s->capturedPiece != EMPTY) {
@@ -388,7 +388,7 @@ namespace Board {
         }
 
         // Undo castling via lookup table
-        if (Helpers::is_castle(move)) {
+        if (Helpers::isCastle(move)) {
             auto cd = game.attackWorker.preComputed.castlingRookMoves[from][to];
             Piece rook = game.boardGhost[cd.rookTo];
             setSquare(game, cd.rookTo, EMPTY);
@@ -480,17 +480,17 @@ namespace Board {
     std::string moveToString(Move move)
     {
         // from and to squares
-        std::string fromStr = squareToName(Helpers::get_from(move));
-        std::string toStr   = squareToName(Helpers::get_to(move));
+        std::string fromStr = squareToName(Helpers::getFrom(move));
+        std::string toStr   = squareToName(Helpers::getTo(move));
 
         std::string moveStr = fromStr + toStr;
 
         // promotion handling
-        if (Helpers::get_promo(move) != 0)
+        if (Helpers::getPromo(move) != 0)
         {
-            Piece promoPiece = Helpers::get_promo(move);
+            Piece promoPiece = Helpers::getPromo(move);
 
-            switch (Helpers::get_type(promoPiece))
+            switch (Helpers::getType(promoPiece))
             {
                 case KNIGHT: moveStr += 'n'; break;
                 case BISHOP: moveStr += 'b'; break;
@@ -527,21 +527,21 @@ namespace Board {
 
             switch (moveStr[4])
             {
-                case 'b': promoFlag = Helpers::make_piece(BISHOP, game.turn); break;
-                case 'n': promoFlag = Helpers::make_piece(KNIGHT, game.turn); break;
-                case 'r': promoFlag = Helpers::make_piece(ROOK,   game.turn); break;
-                case 'q': promoFlag = Helpers::make_piece(QUEEN,  game.turn); break;
+                case 'b': promoFlag = Helpers::makePiece(BISHOP, game.turn); break;
+                case 'n': promoFlag = Helpers::makePiece(KNIGHT, game.turn); break;
+                case 'r': promoFlag = Helpers::makePiece(ROOK,   game.turn); break;
+                case 'q': promoFlag = Helpers::makePiece(QUEEN,  game.turn); break;
                 default:  promoFlag = EMPTY; break; // safety fallback
             }
         }
 
         // --- Capture ---
-        bool capture = (Helpers::get_type(game.boardGhost[toSq]) != EMPTY);
+        bool capture = (Helpers::getType(game.boardGhost[toSq]) != EMPTY);
 
         // --- En passant ---
         bool enpassant = false;
 
-        if (toSq == game.enpassantSquare && Helpers::get_type(game.boardGhost[fromSq]) == PAWN)
+        if (toSq == game.enpassantSquare && Helpers::getType(game.boardGhost[fromSq]) == PAWN)
         {
             enpassant = true;
             capture   = true; // en passant is still a capture
@@ -550,16 +550,16 @@ namespace Board {
         // --- Double pawn push ---
         bool doublePush = false;
 
-        if (Helpers::get_type(game.boardGhost[fromSq]) == PAWN && std::abs(toSq - fromSq) == 16)
+        if (Helpers::getType(game.boardGhost[fromSq]) == PAWN && std::abs(toSq - fromSq) == 16)
             doublePush = true;
 
         // --- Castling ---
         bool castle = false;
 
-        if (Helpers::get_type(game.boardGhost[fromSq]) == KING && std::abs(toSq - fromSq) == 2)
+        if (Helpers::getType(game.boardGhost[fromSq]) == KING && std::abs(toSq - fromSq) == 2)
             castle = true;
 
-        return Helpers::move(fromSq, toSq, promoFlag, capture, isPromo, enpassant, 0, doublePush, castle);
+        return Helpers::createMove(fromSq, toSq, promoFlag, capture, isPromo, enpassant, 0, doublePush, castle);
     }
 
     inline void setSquare(Rune::Game& game, int square, Piece piece)
@@ -567,19 +567,19 @@ namespace Board {
         const uint64_t bit = 1ULL << square;
 
         Piece old_piece = game.boardGhost[square];
-        int old_type = Helpers::get_type(old_piece);
+        int old_type = Helpers::getType(old_piece);
 
         // Remove old piece
         if (old_type != EMPTY) {
-            int old_color = Helpers::get_color(old_piece);
+            int old_color = Helpers::getColor(old_piece);
             game.board[old_color][old_type] &= ~bit;
             game.occupancy[old_color] &= ~bit;
         }
 
         // Place new piece
-        int new_type = Helpers::get_type(piece);
+        int new_type = Helpers::getType(piece);
         if (new_type != EMPTY) {
-            int new_color = Helpers::get_color(piece);
+            int new_color = Helpers::getColor(piece);
             game.board[new_color][new_type] |= bit;
             game.occupancy[new_color] |= bit;
         }
@@ -726,14 +726,14 @@ namespace Board {
     bool isFileOpen(Rune::Game& game, int file)
     {
         Bitboard pawns = game.board[WHITE][PAWN] | game.board[BLACK][PAWN];
-        Bitboard fileMask = FILE_MASKS[file];
+        Bitboard fileMask = Rune::FILE_MASKS[file];
 
         return !(fileMask & pawns);
     }
 
     bool isFileSemiOpen(Rune::Game& game, int file, int color)
     {
-        Bitboard fileMask = FILE_MASKS[file];
+        Bitboard fileMask = Rune::FILE_MASKS[file];
         Bitboard friendlyPawns = game.board[color][PAWN];
         Bitboard enemyPawns = game.board[!color][PAWN];
 

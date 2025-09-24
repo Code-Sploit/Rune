@@ -74,8 +74,8 @@ namespace UCI {
 
             if (strcmp(input, "uci") == 0)
             {
-                std::cout << "id name " << __UCI_VERSION__ << std::endl;
-                std::cout << "id author " << __UCI_AUTHOR__ << std::endl;
+                std::cout << "id name " << uciVersion << std::endl;
+                std::cout << "id author " << uciAuthor << std::endl;
                 std::cout << "uciok" << std::endl;
 
                 fflush(stdout);
@@ -224,7 +224,7 @@ namespace UCI {
                 if (movetime > 0)
                     best_move = game.searchWorker.searchPosition(game, game.config.search.maximumDepth, movetime);
                 else if (depth > 0)
-                    best_move = game.searchWorker.searchPosition(game, std::min(game.config.search.maximumDepth, depth), game.searchWorker.maximumSearchTime);
+                    best_move = game.searchWorker.searchPosition(game, std::min(game.config.search.maximumDepth, depth), Search::Config::maximumSearchTime);
                 else if (wtime > 0 && btime > 0)
                 {
                     int time_left = (game.turn == WHITE) ? wtime : btime;
@@ -243,7 +243,7 @@ namespace UCI {
                 }
                 else
                 {
-                    best_move = game.searchWorker.searchPosition(game, std::min(game.config.search.initialDepth, game.config.search.maximumDepth), game.searchWorker.maximumSearchTime);
+                    best_move = game.searchWorker.searchPosition(game, std::min(game.config.search.initialDepth, game.config.search.maximumDepth), Search::Config::maximumSearchTime);
                 }
 
                 std::cout << "bestmove " << ((best_move == 0) ? "(none)" : Board::moveToString(best_move)) << std::endl;

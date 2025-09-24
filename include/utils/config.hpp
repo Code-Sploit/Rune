@@ -1,16 +1,16 @@
 #pragma once
 
-#include <cstddef>  // for size_t 
+#include <cstddef>  // for size_t
 #include <string>
 
 namespace Rune {
-    class Game;
+    class Game; // Forward declaration
 }
 
 namespace Config {
 
     // ----------------------------
-    // Move generation options
+    // Move Generation Options
     // ----------------------------
     struct MoveGenOptions {
         bool doLegalMoveFiltering = true;
@@ -18,7 +18,7 @@ namespace Config {
     };
 
     // ----------------------------
-    // Evaluation options
+    // Evaluation Options
     // ----------------------------
     struct EvalOptions {
         bool doMaterial = true;
@@ -30,7 +30,7 @@ namespace Config {
     };
 
     // ----------------------------
-    // Search options
+    // Search Options
     // ----------------------------
     struct SearchOptions {
         bool doQuiescense = true;
@@ -46,7 +46,7 @@ namespace Config {
     };
 
     // ----------------------------
-    // Master configuration
+    // Master Configuration
     // ----------------------------
     struct Configuration {
         MoveGenOptions moveGen;
@@ -54,6 +54,9 @@ namespace Config {
         SearchOptions search;
     };
 
+    // ----------------------------
+    // Configuration Functions
+    // ----------------------------
     int setOption(Rune::Game& game, const std::string& name, const std::string& value);
     void handleInput(Rune::Game& game, const std::string& input);
 

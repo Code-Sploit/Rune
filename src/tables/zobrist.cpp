@@ -13,10 +13,10 @@ namespace Rune {
 }
 
 namespace Zobrist {
-    ZobristHash zobrist_pieces[12][NUM_SQUARES];   // 6 types * 2 colors
-    ZobristHash zobrist_castling[NUM_CASTLING];
-    ZobristHash zobrist_enpassant[NUM_ENPASSANT];
-    ZobristHash zobrist_turn;
+    ZobristHash zobristPieces[12][numSquares];   // 6 types * 2 colors
+    ZobristHash zobristCastling[numCastling];
+    ZobristHash zobristEnpassant[numEnPassant];
+    ZobristHash zobristTurn;
 
     // piece_to_index[color][piece_type]
     // piece_type must be 0..5 (Pawn, Knight, Bishop, Rook, Queen, King)
@@ -37,10 +37,10 @@ namespace Zobrist {
             int square = __builtin_ctzll(occupancy);
 
             Piece piece = game.boardGhost[square];
-            int color = Helpers::get_color(piece);
-            int type  = Helpers::get_type(piece); // must be 0..5
+            int color = Helpers::getColor(piece);
+            int type  = Helpers::getType(piece); // must be 0..5
 
-            hash ^= zobrist_pieces[piece_to_index[color][type]][square];
+            hash ^= zobristPieces[piece_to_index[color][type]][square];
             occupancy &= occupancy - 1;
         }
 
@@ -48,19 +48,19 @@ namespace Zobrist {
         for (int bit = 0; bit < 4; ++bit) {
             int mask = 1 << bit;
             if (game.castlingRights & mask) {
-                hash ^= zobrist_castling[bit];
+                hash ^= zobristCastling[bit];
             }
         }
 
         // En passant
         if (game.enpassantSquare != -1) {
             int file = game.enpassantSquare & 7;
-            hash ^= zobrist_enpassant[file];
+            hash ^= zobristEnpassant[file];
         }
 
         // Side to move
         if (game.turn == BLACK) {
-            hash ^= zobrist_turn;
+            hash ^= zobristTurn;
         }
 
         return hash;
@@ -70,8 +70,8 @@ namespace Zobrist {
     // Update hash after a move
     // ----------------------------
     void updateMove(Rune::Game& game, Move move, Rune::State& oldState) {
-        int from  = Helpers::get_from(move);
-        int to    = Helpers::get_to(move);
+        int from  = Helpers::getFrom(move);
+        int to    = Helpers::getTo(move);
         int color = game.turn; // side before making move
 
         ZobristHash hash = game.zobristKey;
@@ -79,7 +79,7 @@ namespace Zobrist {
         Piece moved_piece = game.boardGhost[from];
         Piece captured_piece = EMPTY;
 
-        if (Helpers::is_enpassant(move)) {
+        if (Helpers::isEnpassant(move)) {
             int ep_sq = (color == WHITE) ? (to - 8) : (to + 8);
             captured_piece = game.boardGhost[ep_sq];
         } else {
@@ -87,23 +87,23 @@ namespace Zobrist {
         }
 
         // Remove moved piece from "from"
-        hash ^= zobrist_pieces[piece_to_index[Helpers::get_color(moved_piece)][Helpers::get_type(moved_piece)]][from];
+        hash ^= zobristPieces[piece_to_index[Helpers::getColor(moved_piece)][Helpers::getType(moved_piece)]][from];
 
         // Remove captured piece
         if (captured_piece != EMPTY) {
-            int cap_sq = Helpers::is_enpassant(move) ? ((color == WHITE) ? to - 8 : to + 8) : to;
-            hash ^= zobrist_pieces[piece_to_index[Helpers::get_color(captured_piece)][Helpers::get_type(captured_piece)]][cap_sq];
+            int cap_sq = Helpers::isEnpassant(move) ? ((color == WHITE) ? to - 8 : to + 8) : to;
+            hash ^= zobristPieces[piece_to_index[Helpers::getColor(captured_piece)][Helpers::getType(captured_piece)]][cap_sq];
         }
 
         // Add moved/promo piece to "to"
         Piece piece_to_hash = moved_piece;
-        if (Helpers::is_promo(move)) {
-            piece_to_hash = Helpers::make_piece(Helpers::get_promo(move), color);
+        if (Helpers::isPromo(move)) {
+            piece_to_hash = Helpers::makePiece(Helpers::getPromo(move), color);
         }
-        hash ^= zobrist_pieces[piece_to_index[Helpers::get_color(piece_to_hash)][Helpers::get_type(piece_to_hash)]][to];
+        hash ^= zobristPieces[piece_to_index[Helpers::getColor(piece_to_hash)][Helpers::getType(piece_to_hash)]][to];
 
         // Handle castling rook moves
-        if (Helpers::is_castle(move)) {
+        if (Helpers::isCastle(move)) {
             int rook_from = -1, rook_to = -1;
             if (color == WHITE) {
                 if (to == 6) { rook_from = 7; rook_to = 5; }
@@ -113,30 +113,30 @@ namespace Zobrist {
                 else if (to == 58) { rook_from = 56; rook_to = 59; }
             }
             if (rook_from != -1) {
-                hash ^= zobrist_pieces[piece_to_index[color][ROOK]][rook_from];
-                hash ^= zobrist_pieces[piece_to_index[color][ROOK]][rook_to];
+                hash ^= zobristPieces[piece_to_index[color][ROOK]][rook_from];
+                hash ^= zobristPieces[piece_to_index[color][ROOK]][rook_to];
             }
         }
 
         // Update castling rights (per-bit)
         for (int bit = 0; bit < 4; ++bit) {
             int mask = 1 << bit;
-            if (oldState.castlingRights & mask) hash ^= zobrist_castling[bit];
-            if (game.castlingRights    & mask) hash ^= zobrist_castling[bit];
+            if (oldState.castlingRights & mask) hash ^= zobristCastling[bit];
+            if (game.castlingRights    & mask) hash ^= zobristCastling[bit];
         }
 
         // Update en passant
         if (oldState.enpassantSquare != -1) {
             int old_file = oldState.enpassantSquare & 7;
-            hash ^= zobrist_enpassant[old_file];
+            hash ^= zobristEnpassant[old_file];
         }
         if (game.enpassantSquare != -1) {
             int new_file = game.enpassantSquare & 7;
-            hash ^= zobrist_enpassant[new_file];
+            hash ^= zobristEnpassant[new_file];
         }
 
         // Toggle side to move
-        hash ^= zobrist_turn;
+        hash ^= zobristTurn;
 
         game.zobristKey = hash; // ✅ always carry updated key forward
     }
@@ -156,17 +156,17 @@ namespace Zobrist {
         std::uniform_int_distribution<uint64_t> dist;
 
         for (int p = 0; p < 12; p++) {
-            for (int sq = 0; sq < NUM_SQUARES; sq++) {
-                zobrist_pieces[p][sq] = dist(rng);
+            for (int sq = 0; sq < numSquares; sq++) {
+                zobristPieces[p][sq] = dist(rng);
             }
         }
         for (int i = 0; i < 4; i++) { // 0=W_OO,1=W_OOO,2=B_OO,3=B_OOO
-            zobrist_castling[i] = dist(rng);
+            zobristCastling[i] = dist(rng);
         }
-        for (int i = 0; i < NUM_ENPASSANT; i++) {
-            zobrist_enpassant[i] = dist(rng);
+        for (int i = 0; i < numEnPassant; i++) {
+            zobristEnpassant[i] = dist(rng);
         }
-        zobrist_turn = dist(rng);
+        zobristTurn = dist(rng);
     }
 
     // ----------------------------

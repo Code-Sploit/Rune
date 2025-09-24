@@ -21,7 +21,7 @@ REM Output file
 set OUTPUT=-o rune_%VERSION%.exe
 
 echo Compiling...
-g++ %FLAGS% %INCLUDE% src/core/*.cpp src/storage/*.cpp src/tables/*.cpp src/utils/*.cpp src/main.cpp %OUTPUT%
+g++ %FLAGS% %INCLUDE% src/core/*.cpp src/search/*.cpp src/storage/*.cpp src/tables/*.cpp src/utils/*.cpp src/main.cpp %OUTPUT%
 
 REM Check build result
 if %errorlevel% neq 0 (

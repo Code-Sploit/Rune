@@ -9,9 +9,9 @@ namespace Search::Timer {
 
     class Timer {
         private:
-            TimePoint startTime;
-            TimePoint lastDepthStartedAt;
-            TimePoint lastDepthFinishedAt;
+            TimePoint startTime { Clock::now() };
+            TimePoint lastDepthStartedAt { Clock::now() };
+            TimePoint lastDepthFinishedAt { Clock::now() };
 
             int thinkTime;
 

@@ -18,6 +18,8 @@ namespace Search::Timer {
     {
         this->thinkTime = time;
         this->startTime = Clock::now();
+
+        this->timeUp = false;
     }
 
     double Timer::getTimer()

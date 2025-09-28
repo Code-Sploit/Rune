@@ -98,10 +98,15 @@ namespace Search {
         }
 
         // Construct PV if a best move exists
-        if (bestMove != 0)
-        {
+        if (bestMove != 0) {
             pv.clear();
             pv.push_back(bestMove);
+
+            // Limit continuation length to avoid overflowing depth
+            int maxLen = game.config.search.maximumQuiescenseDepth - depth;
+            if ((int)bestChildPV.size() > maxLen)
+                bestChildPV.resize(maxLen);
+
             pv.insert(pv.end(), bestChildPV.begin(), bestChildPV.end());
         }
 
@@ -172,44 +177,35 @@ namespace Search {
 
             Move move = movelist[i];
             Board::makeMove(game, move, MAKE_MOVE_FULL);
-            
-            std::vector<Move> childPV;
 
+            std::vector<Move> childPV;
             int eval = 0;
             int newDepth = depth - 1;
 
-            if (game.repetitionTable.checkThreefold(game.zobristKey))
-            {
+            if (game.repetitionTable.checkThreefold(game.zobristKey)) {
                 eval = Config::DRAW_SCORE;
-            }
-            else
-            {
-                if (i == 0)
-                {
+            } else {
+                if (i == 0) {
                     // First move: full-window search
                     eval = -negamax(game, newDepth, -beta, -alpha, ply + 1, childPV);
-                }
-                else
-                {
+                } else {
                     bool isQuietMove = !Helpers::isCapture(move) &&
                                     !Helpers::isPromo(move) &&
                                     !orderManager.predictCheck(game, move);
 
                     int reduction = 0;
-
-                    if (depth >= 3 && i >= 4 && isQuietMove)
-                    {
+                    if (depth >= 3 && i >= 4 && isQuietMove) {
                         reduction = 1;
                         if (depth >= 5 && i >= 10) reduction++;
                         if (depth >= 7 && i >= 15) reduction++;
                     }
 
-                    // First try reduced depth null-window search (LMR + PVS combined)
+                    // First try reduced-depth null-window search
                     eval = -negamax(game, newDepth - reduction, -alpha - 1, -alpha, ply + 1, childPV);
 
-                    // Re-search if needed
-                    if ((reduction > 0 && eval > alpha) || (eval > alpha && eval < beta))
-                    {
+                    // If re-search is needed, reset PV and search again
+                    if ((reduction > 0 && eval > alpha) || (eval > alpha && eval < beta)) {
+                        childPV.clear();
                         eval = -negamax(game, newDepth, -beta, -alpha, ply + 1, childPV);
                     }
                 }
@@ -217,35 +213,39 @@ namespace Search {
 
             Board::unmakeMove(game, MAKE_MOVE_FULL);
 
-            if (eval > bestEval)
-            {
+            // Only update best move and PV if strictly better
+            if (eval > bestEval) {
                 bestEval = eval;
                 bestMove = move;
                 bestChildPV = childPV;
+
+                // Update alpha *after* bestEval is set
+                if (eval > alpha) {
+                    alpha = eval;
+                    flag = TT_EXACT;
+                }
             }
 
-            if (eval > alpha)
-            {
-                alpha = eval;
-                flag = TT_EXACT; // we found a better move
-            }
-
-            if (alpha >= beta)
-            {
+            if (alpha >= beta) {
                 flag = TT_BETA;
 
                 if (!Helpers::isCapture(move) && game.config.search.doBetaCutoffHistory)
                     orderManager.tables.addBetaCutoff(move, depth, game.turn);
-                
+
                 break;
             }
         }
 
+        // Build PV once, at the end
         pv.clear();
-
-        if (bestMove != 0)
-        {
+        if (bestMove != 0) {
             pv.push_back(bestMove);
+
+            // Limit continuation length: we searched depth-1 below this node
+            int maxLen = depth - 1;
+            if ((int)bestChildPV.size() > maxLen)
+                bestChildPV.resize(maxLen);
+
             pv.insert(pv.end(), bestChildPV.begin(), bestChildPV.end());
         }
 
@@ -267,34 +267,30 @@ namespace Search {
     Move Worker::searchPosition(Rune::Game& game, int initialDepth, int thinkTimeMs)
     {
         timerManager.setTimer(thinkTimeMs);
-        
+
         if (game.config.search.doInfo)
             UCI::debug(__FILE__, "start with initialDepth=%d thinkTime=%d ms", initialDepth, thinkTimeMs);
-        
+
         Move bookMove = 0;
-        
-        if (game.config.search.doOpeningBook) bookMove = OpeningBook::tryBookMove(game);
+        if (game.config.search.doOpeningBook)
+            bookMove = OpeningBook::tryBookMove(game);
 
         if (bookMove && game.ply <= 12 && !game.outOfOpeningBook)
-        {
             return bookMove;
-        }
         else if (game.config.search.doOpeningBook)
-        {
             game.outOfOpeningBook = true;
-        }
 
         Move bestMoveSoFar = 0;
         Movegen::MoveList movelist;
         std::vector<Move> rootPV;
+        int prevEval = 0;  // last iteration's score
 
-        for (int depth = 1; depth <= initialDepth; depth++)
-        {
+        for (int depth = 1; depth <= initialDepth; depth++) {
             timerManager.checkTimer();
-            
             if (timerManager.isTimeUp()) break;
 
-            if (game.config.search.doBetaCutoffHistory) orderManager.tables.updateBetaCutoffHistory();
+            if (game.config.search.doBetaCutoffHistory)
+                orderManager.tables.updateBetaCutoffHistory();
 
             Move bestThisDepth = 0;
             int evalThisDepth = -Config::INF;
@@ -302,7 +298,7 @@ namespace Search {
 
             timerManager.startNewDepth();
 
-            // Probe TT for PV move to reorder
+            // Probe TT for PV move
             Move tmpBestMove = 0;
             int tmpScore = 0;
             if (game.config.search.doTranspositions) {
@@ -311,75 +307,104 @@ namespace Search {
             }
 
             orderManager.requestMoves(game, movelist, Types::NEGAMAX);
+            if (movelist.size() == 1) return movelist[0];
 
             std::vector<Move> bestPV;
 
-            if (movelist.size() == 1) return movelist[0];
+            // --- Aspiration window setup ---
+            int alpha = -Config::INF;
+            int beta  = Config::INF;
+            if (depth > 1) {
+                alpha = prevEval - Config::aspirationWindow;
+                beta  = prevEval + Config::aspirationWindow;
+            }
 
-            for (int i = 0; i < movelist.size(); i++)
-            {
-                timerManager.checkTimer();
+            int retries = 0;
+            const int MAX_RETRIES = 3;
+            bool reSearch = true;
 
-                if (timerManager.isTimeUp()) { completed = false; break; }
+            while (reSearch && retries < MAX_RETRIES) {
+                retries++;
+                reSearch = false;
 
-                Move move = movelist[i];
-                Board::makeMove(game, move, MAKE_MOVE_FULL);
+                int windowLow  = alpha;
+                int windowHigh = beta;
 
-                std::vector<Move> childPV;
+                evalThisDepth = -Config::INF;
+                bestThisDepth = 0;
+                bestPV.clear();
 
-                int score;
-                if (i == 0) {
-                    // First move: full window
-                    score = -negamax(game, depth - 1, -Config::INF, Config::INF, 1, childPV);
-                } else {
-                    // PVS search
-                    score = -negamax(game, depth - 1, -evalThisDepth - 1, -evalThisDepth, 1, childPV);
-                    if (score > evalThisDepth) {
-                        score = -negamax(game, depth - 1, -Config::INF, Config::INF, 1, childPV);
+                for (int i = 0; i < movelist.size(); i++) {
+                    timerManager.checkTimer();
+                    if (timerManager.isTimeUp()) { completed = false; break; }
+
+                    Move move = movelist[i];
+                    Board::makeMove(game, move, MAKE_MOVE_FULL);
+
+                    std::vector<Move> childPV;
+                    int score;
+
+                    if (i == 0) {
+                        // full-window search for first move
+                        score = -negamax(game, depth - 1, -beta, -alpha, 1, childPV);
+                    } else {
+                        // PVS null-window search
+                        score = -negamax(game, depth - 1, -alpha - 1, -alpha, 1, childPV);
+                        if (score > alpha && score < beta)
+                            score = -negamax(game, depth - 1, -beta, -alpha, 1, childPV);
                     }
+
+                    Board::unmakeMove(game, MAKE_MOVE_FULL);
+
+                    if (score > evalThisDepth) {
+                        evalThisDepth = score;
+                        bestThisDepth = move;
+                        bestPV.clear();
+                        bestPV.push_back(move);
+                        bestPV.insert(bestPV.end(), childPV.begin(), childPV.end());
+                    }
+
+                    if (evalThisDepth > alpha) alpha = evalThisDepth;
+                    if (alpha >= beta) break; // beta cutoff
                 }
 
-                Board::unmakeMove(game, MAKE_MOVE_FULL);
-
-                if (score > evalThisDepth) {
-                    evalThisDepth = score;
-                    bestThisDepth = move;
-                    bestPV.clear();
-                    bestPV.push_back(move);
-                    bestPV.insert(bestPV.end(), childPV.begin(), childPV.end());
+                // --- Check aspiration window failure ---
+                if (depth > 1) { // only apply to depth > 1
+                    if (evalThisDepth <= windowLow) {
+                        // fail-low → widen downwards
+                        alpha = -Config::INF;
+                        beta  = evalThisDepth + Config::aspirationWindowGrow;
+                        reSearch = true;
+                    } else if (evalThisDepth >= windowHigh) {
+                        // fail-high → widen upwards
+                        alpha = evalThisDepth - Config::aspirationWindowGrow;
+                        beta  = Config::INF;
+                        reSearch = true;
+                    }
                 }
             }
 
             rootPV = bestPV;
-
             game.pvLine.clear();
-
             for (Move m : rootPV)
-            {
                 game.pvLine += Board::moveToString(m) + " ";
-            }
 
             timerManager.finishDepth();
 
-            // Print info
-            if (completed && game.config.search.doInfo)
-            {
+            if (completed && game.config.search.doInfo) {
                 bool isMate = (std::abs(evalThisDepth) > MATE_THRESHOLD);
                 int score = evalThisDepth;
-
-                if (isMate)
-                {
+                if (isMate) {
                     int mateIn = (MATE_SCORE - std::abs(evalThisDepth) + 1) / 2;
                     mateIn = (mateIn == 0) ? 1 : mateIn;
                     if (evalThisDepth < 0) mateIn = -mateIn;
                     score = mateIn;
                 }
-
                 UCI::printSearchResult(depth, score, timerManager.getTimer(), isMate, game.pvLine);
-            }
-            else if (!completed) break;
+            } else if (!completed) break;
 
             bestMoveSoFar = bestThisDepth;
+            prevEval = evalThisDepth;
         }
 
         if (game.config.search.doInfo)

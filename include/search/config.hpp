@@ -30,4 +30,7 @@ namespace Search::Config {
     const int searchThinkTimeMargin = 10;
 
     const int INF = 1000000;
+
+    const int aspirationWindow     = 20;
+    const int aspirationWindowGrow = 170;
 }
